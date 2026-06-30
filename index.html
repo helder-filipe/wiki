@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wiki MindMapper PRO - Contraste Absoluto</title>
+    <title>Wiki MindMapper PRO</title>
     
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     
@@ -15,7 +15,7 @@
             height: 100%;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
-            background-color: #5f5b5b;
+            background-color: #121212;
             color: #fff;
         }
 
@@ -31,22 +31,45 @@
             backdrop-filter: blur(8px);
             border: 1px solid #333;
             max-width: 300px;
+            transition: all 0.3s ease;
+        }
+
+        /* Adaptação para ecrãs de telemóvel */
+        @media (max-width: 600px) {
+            #interface {
+                left: 10px;
+                right: 10px;
+                top: 10px;
+                max-width: none;
+            }
+        }
+
+        /* Estado Minimizado para poupar espaço no telemóvel */
+        #interface.minimizado {
+            padding: 12px 20px;
+        }
+
+        #interface.minimizado .input-group,
+        #interface.minimizado #status,
+        #interface.minimizado .subtitle {
+            display: none !important;
         }
 
         h1 {
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             margin-top: 0;
             margin-bottom: 5px;
             color: #00adb5;
             text-transform: uppercase;
             letter-spacing: 1px;
+            display: inline-block;
         }
 
         p.subtitle {
             font-size: 0.8rem;
             color: #888;
             margin-top: 0;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
 
         .input-group input, .input-group button {
@@ -94,6 +117,22 @@
             border-color: #00adb5;
         }
 
+        .btn-toggle {
+            float: right;
+            background: #333;
+            border: 1px solid #555;
+            color: #00adb5;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .btn-toggle:hover {
+            background: #444;
+        }
+
         #status {
             margin-top: 15px;
             font-size: 0.85rem;
@@ -101,13 +140,6 @@
             line-height: 1.4;
             border-top: 1px solid #333;
             padding-top: 12px;
-        }
-
-        #instructions {
-            margin-top: 12px;
-            font-size: 0.8rem;
-            color: #ffb703;
-            line-height: 1.4;
         }
 
         #network {
@@ -123,19 +155,17 @@
 <body>
 
     <div id="interface">
-        <h1>Wiki MindMapper PRO</h1>
-        <p class="subtitle">Gestão Dinâmica de Nós</p>
+        <button class="btn-toggle" id="btnToggle" onclick="togglePainel()" style="display:none;">Expandir</button>
+        <h1>Wiki MindMapper</h1>
+        <p class="subtitle">Mapas de Estudo Inteligentes</p>
+        
         <div class="input-group">
             <input type="text" id="tema" placeholder="Ex: Economia circular">
             <button class="primary" onclick="gerarMapaMentalInicial()">Gerar Mapa Contextual</button>
             <button class="secondary" id="btnPausa" onclick="alternarFisica()" style="display:none;">Pausar Movimento</button>
         </div>
+        
         <div id="status">Insere um tema para carregar a árvore filtrada por relevância.</div>
-        <div id="instructions" style="display:none;">
-            🟠​ <strong>Botão Esquerdo:</strong> Expande o nó com subtópicos.<br>
-            🛑 <strong>Botão Direito:</strong> Desfaz/Recolhe as ramificações.<br>
-            Double <strong>2 Cliques:</strong> Abre o artigo original na Wikipédia.
-        </div>
     </div>
 
     <div id="network"></div>
@@ -194,12 +224,22 @@
             }
         }
 
+        function togglePainel() {
+            const painel = document.getElementById('interface');
+            const btn = document.getElementById('btnToggle');
+            if (painel.classList.contains('minimizado')) {
+                painel.classList.remove('minimizado');
+                btn.innerText = "Recolher";
+            } else {
+                painel.classList.add('minimizado');
+                btn.innerText = "Expandir";
+            }
+        }
+
         function alternarFisica() {
             if (!network) return;
-            
             const btn = document.getElementById('btnPausa');
             fisicaAtiva = !fisicaAtiva;
-            
             network.setOptions({ physics: { enabled: fisicaAtiva } });
             
             if (fisicaAtiva) {
@@ -214,22 +254,22 @@
         async function gerarMapaMentalInicial() {
             const temaCentral = document.getElementById('tema').value.trim();
             const statusDiv = document.getElementById('status');
-            const instructionsDiv = document.getElementById('instructions');
             const btnPausa = document.getElementById('btnPausa');
+            const btnToggle = document.getElementById('btnToggle');
+            const painel = document.getElementById('interface');
 
             if (!temaCentral) return alert("Insere um tema!");
 
             statusDiv.innerHTML = "<strong>A analisar o corpo do texto...</strong>";
-            instructionsDiv.style.display = "none";
-            btnPausa.style.display = "none";
             nosExpandidos.clear();
             paiParaFilhos = {};
             fisicaAtiva = true;
-            document.getElementById('btnPausa').innerText = "Pausar Movimento";
+            btnPausa.innerText = "Pausar Movimento";
 
             nodes = new vis.DataSet([]);
             edges = new vis.DataSet([]);
             
+            // Nó principal com fonte forçada a branco explicitamente
             nodes.add({ 
                 id: temaCentral, 
                 label: temaCentral.toUpperCase(), 
@@ -243,14 +283,11 @@
 
             let topicos = await obterLinksRelevantes(temaCentral);
             if (topicos.length === 0) {
-                statusDiv.innerHTML = "❌ Artigo não encontrado ou sem links no corpo principal. Tenta verificar maiúsculas/minúsculas.";
+                statusDiv.innerHTML = "❌ Artigo não encontrado ou sem links válidos no texto principal.";
                 return;
             }
 
             let topicosPrincipais = topicos.slice(0, 60);
-            statusDiv.innerHTML = `<strong>Rede Criada!</strong><br>Mapeados ${topicosPrincipais.length} tópicos extraídos do texto.`;
-            instructionsDiv.style.display = "block";
-            btnPausa.style.display = "block";
 
             paiParaFilhos[temaCentral] = [];
 
@@ -282,22 +319,22 @@
                     }
                 },
                 nodes: { 
-                    shape: 'dot',
-                    font: {
-                        color: '#ffffff', 
-                        size: 11,
-                        face: 'Segoe UI',
-                        inherit: false // Desativa completamente qualquer herança de hiperligações do browser
-                    }
+                    shape: 'dot'
                 },
                 edges: { color: { color: '#444', opacity: 0.5 }, width: 1.5 }
             };
             
             network = new vis.Network(container, data, options);
 
+            // Ativar a minimização automática do painel no telemóvel para dar espaço
+            painel.classList.add('minimizado');
+            btnToggle.innerText = "Expandir";
+            btnToggle.style.display = "block";
+            btnPausa.style.display = "block";
+
             container.addEventListener('contextmenu', e => e.preventDefault());
 
-            // EVENTO 1: Clique Esquerdo (Expandir)
+            // EVENTO 1: Clique Esquerdo (Expandir Sub-rede)
             network.on("click", async function (params) {
                 if (params.nodes.length > 0) {
                     let noClicado = params.nodes[0];
@@ -305,7 +342,6 @@
 
                     if (nosExpandidos.has(noMinusculo)) return;
 
-                    statusDiv.innerHTML = `<strong>A extrair contexto de:</strong><br><em>${noClicado}</em>...`;
                     nosExpandidos.add(noMinusculo);
 
                     nodes.update({
@@ -332,8 +368,6 @@
                         edges.add({ id: `${noClicado}-${sub}`, from: noClicado, to: sub });
                         paiParaFilhos[noClicado].push(sub);
                     });
-
-                    statusDiv.innerHTML = `<strong>Nó Expandido!</strong>`;
                     
                     if (fisicaAtiva) {
                         network.stabilize();
@@ -341,7 +375,7 @@
                 }
             });
 
-            // EVENTO 2: Clique Direito (Recolher Nó)
+            // EVENTO 2: Clique Direito (Recolher Ramo)
             network.on("oncontext", function (params) {
                 let noClicado = network.getNodeAt(params.pointer.DOM);
                 
@@ -355,12 +389,11 @@
                             color: { background: '#242424', border: '#444' },
                             font: { color: '#ffffff', bold: false, size: 12, face: 'Segoe UI', inherit: false } 
                         });
-                        statusDiv.innerHTML = `<strong>Nó recolhido:</strong> <em>${noClicado}</em>.`;
                     }
                 }
             });
 
-            // EVENTO 3: Duplo clique abre o artigo
+            // EVENTO 3: Duplo Clique (Abrir Artigo)
             network.on("doubleClick", function (params) {
                 if (params.nodes.length > 0) {
                     let noSelecionado = params.nodes[0];
