@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wiki MindMapper PRO - Contraste Absoluto</title>
+    
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background-color: #5f5b5b;
+            color: #fff;
+        }
+
+        #interface {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(24, 24, 24, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid #333;
+            max-width: 300px;
+        }
+
+        h1 {
+            font-size: 1.3rem;
+            margin-top: 0;
+            margin-bottom: 5px;
+            color: #00adb5;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        p.subtitle {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        .input-group input, .input-group button {
+            padding: 12px;
+            margin: 6px 0;
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background: #1e1e1e;
+            color: #fff;
+            font-size: 0.95rem;
+        }
+
+        .input-group input:focus {
+            border-color: #00adb5;
+            outline: none;
+        }
+
+        .input-group button.primary {
+            background: #00adb5;
+            color: #121212;
+            cursor: pointer;
+            font-weight: bold;
+            border: none;
+            transition: all 0.2s ease;
+        }
+
+        .input-group button.primary:hover { 
+            background: #00f5ff;
+        }
+
+        .input-group button.secondary {
+            background: #333;
+            color: #fff;
+            cursor: pointer;
+            border: 1px solid #555;
+            transition: all 0.2s ease;
+            margin-top: 8px;
+        }
+
+        .input-group button.secondary:hover {
+            background: #444;
+            border-color: #00adb5;
+        }
+
+        #status {
+            margin-top: 15px;
+            font-size: 0.85rem;
+            color: #aaa;
+            line-height: 1.4;
+            border-top: 1px solid #333;
+            padding-top: 12px;
+        }
+
+        #instructions {
+            margin-top: 12px;
+            font-size: 0.8rem;
+            color: #ffb703;
+            line-height: 1.4;
+        }
+
+        #network {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="interface">
+        <h1>Wiki MindMapper PRO</h1>
+        <p class="subtitle">Gestão Dinâmica de Nós</p>
+        <div class="input-group">
+            <input type="text" id="tema" placeholder="Ex: Economia circular">
+            <button class="primary" onclick="gerarMapaMentalInicial()">Gerar Mapa Contextual</button>
+            <button class="secondary" id="btnPausa" onclick="alternarFisica()" style="display:none;">Pausar Movimento</button>
+        </div>
+        <div id="status">Insere um tema para carregar a árvore filtrada por relevância.</div>
+        <div id="instructions" style="display:none;">
+            🟠​ <strong>Botão Esquerdo:</strong> Expande o nó com subtópicos.<br>
+            🛑 <strong>Botão Direito:</strong> Desfaz/Recolhe as ramificações.<br>
+            Double <strong>2 Cliques:</strong> Abre o artigo original na Wikipédia.
+        </div>
+    </div>
+
+    <div id="network"></div>
+
+    <script>
+        let nodes, edges, network;
+        let nosExpandidos = new Set();
+        let paiParaFilhos = {}; 
+        let fisicaAtiva = true;
+
+        function eTopicoValido(titulo) {
+            if (!titulo) return false;
+            const contemApenasNumeros = /^\d+$/.test(titulo);
+            const eSeculo = /século/i.test(titulo);
+            const contemLista = /lista de/i.test(titulo);
+            const eEspecial = /:/.test(titulo); 
+            
+            return !contemApenasNumeros && !eSeculo && !contemLista && !eEspecial;
+        }
+
+        async function obterLinksRelevantes(titulo) {
+            const url = `https://pt.wikipedia.org/w/api.php?action=parse&format=json&page=${encodeURIComponent(titulo)}&prop=text&origin=*`;
+            
+            try {
+                const resposta = await fetch(url);
+                const dados = await resposta.json();
+                if (dados.error) return [];
+                
+                const htmlTexto = dados.parse.text["*"];
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlTexto, 'text/html');
+                let linksSelecionados = new Set();
+
+                const elementosTexto = doc.querySelectorAll('p a, li a');
+                elementosTexto.forEach(a => {
+                    const href = a.getAttribute('href');
+                    const title = a.getAttribute('title');
+                    if (href && href.startsWith('/wiki/') && title && eTopicoValido(title)) {
+                        linksSelecionados.add(title);
+                    }
+                });
+
+                const infoboxLinks = doc.querySelectorAll('.infobox a, .fichabiografica a');
+                infoboxLinks.forEach(a => {
+                    const href = a.getAttribute('href');
+                    const title = a.getAttribute('title');
+                    if (href && href.startsWith('/wiki/') && title && eTopicoValido(title)) {
+                        linksSelecionados.add(title);
+                    }
+                });
+
+                return Array.from(linksSelecionados);
+            } catch (erro) {
+                console.error("Erro ao processar HTML da Wikipédia:", erro);
+                return [];
+            }
+        }
+
+        function alternarFisica() {
+            if (!network) return;
+            
+            const btn = document.getElementById('btnPausa');
+            fisicaAtiva = !fisicaAtiva;
+            
+            network.setOptions({ physics: { enabled: fisicaAtiva } });
+            
+            if (fisicaAtiva) {
+                btn.innerText = "Pausar Movimento";
+                btn.style.borderColor = "#555";
+            } else {
+                btn.innerText = "Ativar Movimento";
+                btn.style.borderColor = "#ffb703";
+            }
+        }
+
+        async function gerarMapaMentalInicial() {
+            const temaCentral = document.getElementById('tema').value.trim();
+            const statusDiv = document.getElementById('status');
+            const instructionsDiv = document.getElementById('instructions');
+            const btnPausa = document.getElementById('btnPausa');
+
+            if (!temaCentral) return alert("Insere um tema!");
+
+            statusDiv.innerHTML = "<strong>A analisar o corpo do texto...</strong>";
+            instructionsDiv.style.display = "none";
+            btnPausa.style.display = "none";
+            nosExpandidos.clear();
+            paiParaFilhos = {};
+            fisicaAtiva = true;
+            document.getElementById('btnPausa').innerText = "Pausar Movimento";
+
+            nodes = new vis.DataSet([]);
+            edges = new vis.DataSet([]);
+            
+            nodes.add({ 
+                id: temaCentral, 
+                label: temaCentral.toUpperCase(), 
+                color: { background: '#00adb5', border: '#00f5ff' },
+                font: { color: '#ffffff', bold: true, size: 15, face: 'Segoe UI', inherit: false },
+                size: 26,
+                borderWidth: 3
+            });
+
+            nosExpandidos.add(temaCentral.toLowerCase());
+
+            let topicos = await obterLinksRelevantes(temaCentral);
+            if (topicos.length === 0) {
+                statusDiv.innerHTML = "❌ Artigo não encontrado ou sem links no corpo principal. Tenta verificar maiúsculas/minúsculas.";
+                return;
+            }
+
+            let topicosPrincipais = topicos.slice(0, 60);
+            statusDiv.innerHTML = `<strong>Rede Criada!</strong><br>Mapeados ${topicosPrincipais.length} tópicos extraídos do texto.`;
+            instructionsDiv.style.display = "block";
+            btnPausa.style.display = "block";
+
+            paiParaFilhos[temaCentral] = [];
+
+            topicosPrincipais.forEach(topico => {
+                nodes.add({ 
+                    id: topico, 
+                    label: topico,
+                    color: { background: '#242424', border: '#444' },
+                    font: { color: '#ffffff', size: 12, face: 'Segoe UI', inherit: false },
+                    size: 12
+                });
+                edges.add({ id: `${temaCentral}-${topico}`, from: temaCentral, to: topico });
+                paiParaFilhos[temaCentral].push(topico);
+            });
+
+            let container = document.getElementById('network');
+            let data = { nodes: nodes, edges: edges };
+            
+            let options = {
+                physics: {
+                    enabled: true,
+                    solver: 'forceAtlas2Based',
+                    forceAtlas2Based: {
+                        gravitationalConstant: -70,
+                        centralGravity: 0.01,
+                        springLength: 100,
+                        springConstant: 0.08,
+                        avoidOverlap: 1
+                    }
+                },
+                nodes: { 
+                    shape: 'dot',
+                    font: {
+                        color: '#ffffff', 
+                        size: 11,
+                        face: 'Segoe UI',
+                        inherit: false // Desativa completamente qualquer herança de hiperligações do browser
+                    }
+                },
+                edges: { color: { color: '#444', opacity: 0.5 }, width: 1.5 }
+            };
+            
+            network = new vis.Network(container, data, options);
+
+            container.addEventListener('contextmenu', e => e.preventDefault());
+
+            // EVENTO 1: Clique Esquerdo (Expandir)
+            network.on("click", async function (params) {
+                if (params.nodes.length > 0) {
+                    let noClicado = params.nodes[0];
+                    let noMinusculo = noClicado.toLowerCase();
+
+                    if (nosExpandidos.has(noMinusculo)) return;
+
+                    statusDiv.innerHTML = `<strong>A extrair contexto de:</strong><br><em>${noClicado}</em>...`;
+                    nosExpandidos.add(noMinusculo);
+
+                    nodes.update({
+                        id: noClicado,
+                        color: { background: '#ffb703', border: '#fb8500' },
+                        font: { color: '#121212', bold: true, size: 12, face: 'Segoe UI', inherit: false } 
+                    });
+
+                    let subTopicos = await obterLinksRelevantes(noClicado);
+                    let subTopicosLimitados = subTopicos.slice(0, 15);
+
+                    paiParaFilhos[noClicado] = [];
+
+                    subTopicosLimitados.forEach(sub => {
+                        if (!nodes.get(sub)) {
+                            nodes.add({
+                                id: sub,
+                                label: sub,
+                                color: { background: '#1a1a1a', border: '#555' },
+                                font: { color: '#ffffff', size: 11, face: 'Segoe UI', inherit: false }, 
+                                size: 8
+                            });
+                        }
+                        edges.add({ id: `${noClicado}-${sub}`, from: noClicado, to: sub });
+                        paiParaFilhos[noClicado].push(sub);
+                    });
+
+                    statusDiv.innerHTML = `<strong>Nó Expandido!</strong>`;
+                    
+                    if (fisicaAtiva) {
+                        network.stabilize();
+                    }
+                }
+            });
+
+            // EVENTO 2: Clique Direito (Recolher Nó)
+            network.on("oncontext", function (params) {
+                let noClicado = network.getNodeAt(params.pointer.DOM);
+                
+                if (noClicado) {
+                    let noMinusculo = noClicado.toLowerCase();
+                    if (nosExpandidos.has(noMinusculo)) {
+                        recolherNo(noClicado);
+                        nosExpandidos.delete(noMinusculo);
+                        nodes.update({
+                            id: noClicado,
+                            color: { background: '#242424', border: '#444' },
+                            font: { color: '#ffffff', bold: false, size: 12, face: 'Segoe UI', inherit: false } 
+                        });
+                        statusDiv.innerHTML = `<strong>Nó recolhido:</strong> <em>${noClicado}</em>.`;
+                    }
+                }
+            });
+
+            // EVENTO 3: Duplo clique abre o artigo
+            network.on("doubleClick", function (params) {
+                if (params.nodes.length > 0) {
+                    let noSelecionado = params.nodes[0];
+                    let urlWikipedia = `https://pt.wikipedia.org/wiki/${encodeURIComponent(noSelecionado)}`;
+                    window.open(urlWikipedia, '_blank');
+                }
+            });
+        }
+
+        function recolherNo(pai) {
+            if (!paiParaFilhos[pai]) return;
+
+            paiParaFilhos[pai].forEach(filho => {
+                edges.remove(`${pai}-${filho}`);
+                let ligacoesRestantes = edges.get({
+                    filter: function (edge) {
+                        return edge.from === filho || edge.to === filho;
+                    }
+                });
+
+                if (ligacoesRestantes.length === 0) {
+                    if (nosExpandidos.has(filho.toLowerCase())) {
+                        recolherNo(filho);
+                        nosExpandidos.delete(filho.toLowerCase());
+                    }
+                    nodes.remove(filho);
+                }
+            });
+            delete paiParaFilhos[pai];
+        }
+    </script>
+</body>
+</html>
