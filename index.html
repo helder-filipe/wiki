@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wiki MindMapper PRO</title>
+    <title>Wiki MindMapper PRO - Mobile Touch</title>
     
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     
@@ -34,7 +34,6 @@
             transition: all 0.3s ease;
         }
 
-        /* Adaptação para ecrãs de telemóvel */
         @media (max-width: 600px) {
             #interface {
                 left: 10px;
@@ -44,7 +43,6 @@
             }
         }
 
-        /* Estado Minimizado para poupar espaço no telemóvel */
         #interface.minimizado {
             padding: 12px 20px;
         }
@@ -96,7 +94,6 @@
             cursor: pointer;
             font-weight: bold;
             border: none;
-            transition: all 0.2s ease;
         }
 
         .input-group button.primary:hover { 
@@ -108,13 +105,7 @@
             color: #fff;
             cursor: pointer;
             border: 1px solid #555;
-            transition: all 0.2s ease;
             margin-top: 8px;
-        }
-
-        .input-group button.secondary:hover {
-            background: #444;
-            border-color: #00adb5;
         }
 
         .btn-toggle {
@@ -127,10 +118,6 @@
             font-size: 0.75rem;
             cursor: pointer;
             font-weight: bold;
-        }
-        
-        .btn-toggle:hover {
-            background: #444;
         }
 
         #status {
@@ -157,7 +144,7 @@
     <div id="interface">
         <button class="btn-toggle" id="btnToggle" onclick="togglePainel()" style="display:none;">Expandir</button>
         <h1>Wiki MindMapper</h1>
-        <p class="subtitle">Mapas de Estudo Inteligentes</p>
+        <p class="subtitle">Mapas de Estudo Tácteis</p>
         
         <div class="input-group">
             <input type="text" id="tema" placeholder="Ex: Economia circular">
@@ -182,13 +169,11 @@
             const eSeculo = /século/i.test(titulo);
             const contemLista = /lista de/i.test(titulo);
             const eEspecial = /:/.test(titulo); 
-            
             return !contemApenasNumeros && !eSeculo && !contemLista && !eEspecial;
         }
 
         async function obterLinksRelevantes(titulo) {
             const url = `https://pt.wikipedia.org/w/api.php?action=parse&format=json&page=${encodeURIComponent(titulo)}&prop=text&origin=*`;
-            
             try {
                 const resposta = await fetch(url);
                 const dados = await resposta.json();
@@ -208,18 +193,9 @@
                     }
                 });
 
-                const infoboxLinks = doc.querySelectorAll('.infobox a, .fichabiografica a');
-                infoboxLinks.forEach(a => {
-                    const href = a.getAttribute('href');
-                    const title = a.getAttribute('title');
-                    if (href && href.startsWith('/wiki/') && title && eTopicoValido(title)) {
-                        linksSelecionados.add(title);
-                    }
-                });
-
                 return Array.from(linksSelecionados);
             } catch (erro) {
-                console.error("Erro ao processar HTML da Wikipédia:", erro);
+                console.error("Erro ao processar HTML:", erro);
                 return [];
             }
         }
@@ -241,14 +217,8 @@
             const btn = document.getElementById('btnPausa');
             fisicaAtiva = !fisicaAtiva;
             network.setOptions({ physics: { enabled: fisicaAtiva } });
-            
-            if (fisicaAtiva) {
-                btn.innerText = "Pausar Movimento";
-                btn.style.borderColor = "#555";
-            } else {
-                btn.innerText = "Ativar Movimento";
-                btn.style.borderColor = "#ffb703";
-            }
+            btn.innerText = fisicaAtiva ? "Pausar Movimento" : "Ativar Movimento";
+            btn.style.borderColor = fisicaAtiva ? "#555" : "#ffb703";
         }
 
         async function gerarMapaMentalInicial() {
@@ -264,12 +234,10 @@
             nosExpandidos.clear();
             paiParaFilhos = {};
             fisicaAtiva = true;
-            btnPausa.innerText = "Pausar Movimento";
 
             nodes = new vis.DataSet([]);
             edges = new vis.DataSet([]);
             
-            // Nó principal com fonte forçada a branco explicitamente
             nodes.add({ 
                 id: temaCentral, 
                 label: temaCentral.toUpperCase(), 
@@ -283,11 +251,17 @@
 
             let topicos = await obterLinksRelevantes(temaCentral);
             if (topicos.length === 0) {
-                statusDiv.innerHTML = "❌ Artigo não encontrado ou sem links válidos no texto principal.";
+                statusDiv.innerHTML = "❌ Artigo não encontrado. Verifica maiúsculas/minúsculas.";
                 return;
             }
 
-            let topicosPrincipais = topicos.slice(0, 60);
+            let topicosPrincipais = topicos.slice(0, 50);
+            statusDiv.innerHTML = `<strong>Rede Criada!</strong> Mapeados ${topicosPrincipais.length} tópicos.`;
+            
+            painel.classList.add('minimizado');
+            btnToggle.innerText = "Expandir";
+            btnToggle.style.display = "block";
+            btnPausa.style.display = "block";
 
             paiParaFilhos[temaCentral] = [];
 
@@ -310,77 +284,22 @@
                 physics: {
                     enabled: true,
                     solver: 'forceAtlas2Based',
-                    forceAtlas2Based: {
-                        gravitationalConstant: -70,
-                        centralGravity: 0.01,
-                        springLength: 100,
-                        springConstant: 0.08,
-                        avoidOverlap: 1
-                    }
+                    forceAtlas2Based: { gravitationalConstant: -70, centralGravity: 0.01, springLength: 100, springConstant: 0.08, avoidOverlap: 1 }
                 },
-                nodes: { 
-                    shape: 'dot'
-                },
+                nodes: { shape: 'dot' },
                 edges: { color: { color: '#444', opacity: 0.5 }, width: 1.5 }
             };
             
             network = new vis.Network(container, data, options);
 
-            // Ativar a minimização automática do painel no telemóvel para dar espaço
-            painel.classList.add('minimizado');
-            btnToggle.innerText = "Expandir";
-            btnToggle.style.display = "block";
-            btnPausa.style.display = "block";
-
             container.addEventListener('contextmenu', e => e.preventDefault());
 
-            // EVENTO 1: Clique Esquerdo (Expandir Sub-rede)
-            network.on("click", async function (params) {
+            // TÁCTIL: Detetar clique longo para RECOLHER (hold)
+            network.on("hold", function (params) {
                 if (params.nodes.length > 0) {
                     let noClicado = params.nodes[0];
                     let noMinusculo = noClicado.toLowerCase();
-
-                    if (nosExpandidos.has(noMinusculo)) return;
-
-                    nosExpandidos.add(noMinusculo);
-
-                    nodes.update({
-                        id: noClicado,
-                        color: { background: '#ffb703', border: '#fb8500' },
-                        font: { color: '#121212', bold: true, size: 12, face: 'Segoe UI', inherit: false } 
-                    });
-
-                    let subTopicos = await obterLinksRelevantes(noClicado);
-                    let subTopicosLimitados = subTopicos.slice(0, 15);
-
-                    paiParaFilhos[noClicado] = [];
-
-                    subTopicosLimitados.forEach(sub => {
-                        if (!nodes.get(sub)) {
-                            nodes.add({
-                                id: sub,
-                                label: sub,
-                                color: { background: '#1a1a1a', border: '#555' },
-                                font: { color: '#ffffff', size: 11, face: 'Segoe UI', inherit: false }, 
-                                size: 8
-                            });
-                        }
-                        edges.add({ id: `${noClicado}-${sub}`, from: noClicado, to: sub });
-                        paiParaFilhos[noClicado].push(sub);
-                    });
                     
-                    if (fisicaAtiva) {
-                        network.stabilize();
-                    }
-                }
-            });
-
-            // EVENTO 2: Clique Direito (Recolher Ramo)
-            network.on("oncontext", function (params) {
-                let noClicado = network.getNodeAt(params.pointer.DOM);
-                
-                if (noClicado) {
-                    let noMinusculo = noClicado.toLowerCase();
                     if (nosExpandidos.has(noMinusculo)) {
                         recolherNo(noClicado);
                         nosExpandidos.delete(noMinusculo);
@@ -389,31 +308,63 @@
                             color: { background: '#242424', border: '#444' },
                             font: { color: '#ffffff', bold: false, size: 12, face: 'Segoe UI', inherit: false } 
                         });
+                        statusDiv.innerHTML = `<strong>Nó recolhido:</strong> <em>${noClicado}</em>.`;
                     }
                 }
             });
 
-            // EVENTO 3: Duplo Clique (Abrir Artigo)
+            // TÁCTIL: Detetar clique rápido para EXPANDIR
+            network.on("selectNode", async function (params) {
+                let noClicado = params.nodes[0];
+                let noMinusculo = noClicado.toLowerCase();
+
+                if (nosExpandidos.has(noMinusculo)) return;
+
+                nosExpandidos.add(noMinusculo);
+                nodes.update({
+                    id: noClicado,
+                    color: { background: '#ffb703', border: '#fb8500' },
+                    font: { color: '#121212', bold: true, size: 12, face: 'Segoe UI', inherit: false } 
+                });
+
+                let subTopicos = await obterLinksRelevantes(noClicado);
+                let subTopicosLimitados = subTopicos.slice(0, 12);
+
+                paiParaFilhos[noClicado] = [];
+
+                subTopicosLimitados.forEach(sub => {
+                    if (!nodes.get(sub)) {
+                        nodes.add({
+                            id: sub,
+                            label: sub,
+                            color: { background: '#1a1a1a', border: '#555' },
+                            font: { color: '#ffffff', size: 11, face: 'Segoe UI', inherit: false }, 
+                            size: 8
+                        });
+                    }
+                    edges.add({ id: `${noClicado}-${sub}`, from: noClicado, to: sub });
+                    paiParaFilhos[noClicado].push(sub);
+                });
+                
+                if (fisicaAtiva) network.stabilize();
+            });
+
             network.on("doubleClick", function (params) {
                 if (params.nodes.length > 0) {
                     let noSelecionado = params.nodes[0];
-                    let urlWikipedia = `https://pt.wikipedia.org/wiki/${encodeURIComponent(noSelecionado)}`;
-                    window.open(urlWikipedia, '_blank');
+                    window.open(`https://pt.wikipedia.org/wiki/${encodeURIComponent(noSelecionado)}`, '_blank');
                 }
             });
         }
 
+        // Função de destruição corrigida e limpa (sem os três pontos)
         function recolherNo(pai) {
             if (!paiParaFilhos[pai]) return;
-
             paiParaFilhos[pai].forEach(filho => {
                 edges.remove(`${pai}-${filho}`);
                 let ligacoesRestantes = edges.get({
-                    filter: function (edge) {
-                        return edge.from === filho || edge.to === filho;
-                    }
+                    filter: function (edge) { return edge.from === filho || edge.to === filho; }
                 });
-
                 if (ligacoesRestantes.length === 0) {
                     if (nosExpandidos.has(filho.toLowerCase())) {
                         recolherNo(filho);
