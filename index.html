@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wiki MindMapper PRO - Versão Final Estável</title>
+    <title>Wiki MindMapper PRO - Versão Estável</title>
     
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     
@@ -15,7 +15,7 @@
             height: 100%;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
-            background-color: #121212;
+            background-color: #797777;
             color: #fff;
             touch-action: none; 
         }
@@ -141,7 +141,7 @@
     <div id="interface">
         <button class="btn-toggle" id="btnToggle" onclick="togglePainel()" style="display:none;">Expandir</button>
         <h1>Wiki MindMapper</h1>
-        <p class="subtitle">Mapas de Estudo Tácteis</p>
+        <p class="subtitle">Mapas de Estudo Otimizados</p>
         
         <div class="input-group">
             <input type="text" id="tema" placeholder="Ex: Economia circular">
@@ -159,7 +159,7 @@
         let nosExpandidos = new Set();
         let paiParaFilhos = {}; 
         let fisicaAtiva = true;
-        let segurandoNo = false; // Flag para evitar conflito entre clique curto e hold
+        let temaRaiz = "";
 
         function eTopicoValido(titulo) {
             if (!titulo) return false;
@@ -232,6 +232,7 @@
             nosExpandidos.clear();
             paiParaFilhos = {};
             fisicaAtiva = true;
+            temaRaiz = temaCentral.toLowerCase();
 
             nodes = new vis.DataSet([]);
             edges = new vis.DataSet([]);
@@ -244,8 +245,6 @@
                 size: 26,
                 borderWidth: 3
             });
-
-            nosExpandidos.add(temaCentral.toLowerCase());
 
             let topicos = await obterLinksRelevantes(temaCentral);
             if (topicos.length === 0) {
@@ -292,93 +291,88 @@
 
             container.addEventListener('contextmenu', e => e.preventDefault());
 
-            // TÁCTIL 1: Detetar toque longo para RECOLHER (hold)
-            network.on("hold", function (params) {
-                if (params.nodes.length > 0) {
-                    segurandoNo = true; // Sinaliza que este toque é um hold e não um clique curto
-                    let noClicado = params.nodes[0];
-                    let noMinusculo = noClicado.toLowerCase();
-                    
-                    if (nosExpandidos.has(noMinusculo)) {
-                        recolherNo(noClicado);
-                        nosExpandidos.delete(noMinusculo);
-                        nodes.update({
-                            id: noClicado,
-                            color: { background: '#242424', border: '#444' },
-                            font: { color: '#ffffff', bold: false, size: 12, face: 'Segoe UI', inherit: false } 
-                        });
-                        statusDiv.innerHTML = `<strong>Nó recolhido:</strong> <em>${noClicado}</em>.`;
-                    }
-                }
-            });
+            // EVENTO DE CLIQUE SINALIZADO E SEGURO
+            network.on("click", async function (params) {
+                // Validação 1: Ignora se o clique foi no fundo em branco do mapa
+                if (!params.nodes || params.nodes.length === 0) return;
 
-            // TÁCTIL 2: Detetar clique rápido para EXPANDIR (apenas se não for hold)
-            network.on("selectNode", async function (params) {
-                // Pequena pausa para garantir que o utilizador não está a fazer um toque longo (hold)
-                setTimeout(async () => {
-                    if (segurandoNo) {
-                        segurandoNo = false; // Faz reset da flag e sai sem expandir
-                        return;
-                    }
+                let noClicado = params.nodes[0];
+                let noMinusculo = noClicado.toLowerCase();
 
-                    let noClicado = params.nodes[0];
-                    let noMinusculo = noClicado.toLowerCase();
+                // CASO A: O nó já foi expandido -> Recolher (Toggle Off)
+                if (nosExpandidos.has(noMinusculo)) {
+                    if (noMinusculo === temaRaiz) return; // Nunca apaga o centro
 
-                    if (nosExpandidos.has(noMinusculo)) return;
-
-                    statusDiv.innerHTML = `<strong>A expandir:</strong> <em>${noClicado}</em>...`;
-                    nosExpandidos.add(noMinusculo);
+                    recolherNo(noClicado);
+                    nosExpandidos.delete(noMinusculo);
                     
                     nodes.update({
                         id: noClicado,
-                        color: { background: '#ffb703', border: '#fb8500' },
-                        font: { color: '#121212', bold: true, size: 12, face: 'Segoe UI', inherit: false } 
+                        color: { background: '#242424', border: '#444' },
+                        font: { color: '#ffffff', bold: false, size: 12, face: 'Segoe UI', inherit: false } 
                     });
+                    statusDiv.innerHTML = `<strong>Nó recolhido:</strong> <em>${noClicado}</em>.`;
+                    return;
+                }
 
-                    let subTopicos = await obterLinksRelevantes(noClicado);
-                    let subTopicosLimitados = subTopicos.slice(0, 12);
+                // CASO B: O nó está fechado -> Expandir (Toggle On)
+                statusDiv.innerHTML = `<strong>A expandir:</strong> <em>${noClicado}</em>...`;
+                nosExpandidos.add(noMinusculo);
+                
+                nodes.update({
+                    id: noClicado,
+                    color: { background: '#ffb703', border: '#fb8500' },
+                    font: { color: '#121212', bold: true, size: 12, face: 'Segoe UI', inherit: false } 
+                });
 
-                    paiParaFilhos[noClicado] = [];
+                let subTopicos = await obterLinksRelevantes(noClicado);
+                let subTopicosLimitados = subTopicos.slice(0, 12);
 
-                    subTopicosLimitados.forEach(sub => {
-                        if (!nodes.get(sub)) {
-                            nodes.add({
-                                id: sub,
-                                label: sub,
-                                color: { background: '#1a1a1a', border: '#555' },
-                                font: { color: '#ffffff', size: 11, face: 'Segoe UI', inherit: false }, 
-                                size: 8
-                            });
-                        }
-                        edges.add({ id: `${noClicado}-${sub}`, from: noClicado, to: sub });
-                        paiParaFilhos[noClicado].push(sub);
-                    });
-                    
-                    if (fisicaAtiva) network.stabilize();
-                }, 200); // Janela de segurança de 200ms para o hold ser registado primeiro
+                paiParaFilhos[noClicado] = [];
+
+                subTopicosLimitados.forEach(sub => {
+                    if (!nodes.get(sub)) {
+                        nodes.add({
+                            id: sub,
+                            label: sub,
+                            color: { background: '#1a1a1a', border: '#555' },
+                            font: { color: '#ffffff', size: 11, face: 'Segoe UI', inherit: false }, 
+                            size: 8
+                        });
+                    }
+                    edges.add({ id: `${noClicado}-${sub}`, from: noClicado, to: sub });
+                    paiParaFilhos[noClicado].push(sub);
+                });
+                
+                if (fisicaAtiva) network.stabilize();
             });
 
-            // TÁCTIL 3: Toque duplo abre o artigo original
             network.on("doubleClick", function (params) {
-                if (params.nodes.length > 0) {
+                if (params.nodes && params.nodes.length > 0) {
                     let noSelecionado = params.nodes[0];
                     window.open(`https://pt.wikipedia.org/wiki/${encodeURIComponent(noSelecionado)}`, '_blank');
                 }
             });
         }
 
-        // Função de destruição completamente corrigida (sem os três pontos)
+        // FUNÇÃO RECURSIVA CORRIGIDA E SEM OS TRÊS PONTOS
         function recolherNo(pai) {
             if (!paiParaFilhos[pai]) return;
+
             paiParaFilhos[pai].forEach(filho => {
                 edges.remove(`${pai}-${filho}`);
+                
                 let ligacoesRestantes = edges.get({
-                    filter: function (edge) { return edge.from === filho || edge.to ===  filho; }
+                    filter: function (edge) { 
+                        return edge.from === filho || edge.to === filho; 
+                    }
                 });
+
                 if (ligacoesRestantes.length === 0) {
-                    if (nosExpandidos.has(filho.toLowerCase())) {
+                    let filhoMinusculo = filho.toLowerCase();
+                    if (nosExpandidos.has(filhoMinusculo)) {
                         recolherNo(filho);
-                        nosExpandidos.delete(filho.toLowerCase());
+                        nosExpandidos.delete(filhoMinusculo);
                     }
                     nodes.remove(filho);
                 }
